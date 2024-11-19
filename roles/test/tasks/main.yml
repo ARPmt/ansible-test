@@ -1,0 +1,15 @@
+---
+# tasks file for node
+- name: Create /tmp/arp.txt file
+  file:
+    path: /tmp/arp.txt
+    state: touch
+
+- name: Add a line to the end of a file
+  lineinfile:
+    path: /tmp/arp.txt
+    line: "{{ item }}"
+    insertafter: EOF
+  with_items:
+    - "sctl enable init"
+    - "sctl enable envoy"

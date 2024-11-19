@@ -1,0 +1,9 @@
+---
+# handlers file for node
+- name: docker compose up
+  shell: 
+    cmd: "{{ item }}"
+    chdir: "{{ envoy_dir }}"
+  with_items:
+    - "docker compose down"
+    - "docker compose up -d"

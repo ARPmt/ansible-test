@@ -1,0 +1,62 @@
+---
+# tasks file for node
+
+- name: Delete /app/envoy directory
+  file:
+    path: /app/envoy
+    state: absent
+
+- name: Create /app/envoy directory 
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - /app/envoy/work/.init
+    - /app/envoy/certs
+    - /app/envoy/work/init
+    - /app/envoy/work/envoy
+
+- name: Create /app/envoy/work/.init/init.sh file
+  file:
+    path: /app/envoy/work/.init/init.sh
+    state: touch
+
+- name: Add a line to the end of a file
+  lineinfile:
+    path: /app/envoy/work/.init/init.sh
+    line: "{{ item }}"
+    insertafter: EOF
+  with_items:
+    - "sctl enable init"
+    - "sctl enable envoy"
+
+- name: copy docker-compose.yml to /app/envoy
+  copy:
+    src: "docker-compose.yml"
+    dest: "{{ envoy_dir }}/docker-compose.yml"
+
+- name: copy certs to /app/envoy
+  copy:
+    src: "certs/"
+    dest: "{{ envoy_dir }}/certs/"
+
+- name: copy run.sh to /app/envoy/work/init/run.sh
+  copy:
+    src: "run.sh"
+    dest: "{{ envoy_dir }}/work/init/run.sh"
+    mode: '0755'
+
+- name: Pull envoy node Docker image
+  command: "docker pull {{ docker_image }}:{{ version }}"
+
+- name: update envoy node envoy.yml
+  template:
+    src: envoy.j2
+    dest: "{{ envoy_dir }}/work/envoy/envoy.yml"
+  notify:
+   - docker compose up
+  
+
+
+
+  

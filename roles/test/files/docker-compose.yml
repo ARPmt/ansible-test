@@ -1,0 +1,13 @@
+services:
+  app:
+    image: ghcr.io/nsiod/fg-gateway:v1.0
+    container_name: envoy
+    volumes:
+      - ./work:/work
+      - ./certs:/certs
+    network_mode: host
+    privileged: true
+    environment:
+      # Envoy 日志级别 error, info, debug, warn
+      ENVOY_DEBUG: ${ENVOY_DEBUG:-warn}
+    restart: always

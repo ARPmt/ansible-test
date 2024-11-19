@@ -1,0 +1,10 @@
+---
+# vars file for node
+version: v1.0
+envoy_dir: /app/envoy
+envoy_port: 9901
+envoy_gateeway: 43.231.196.18
+envoy_gateeway_port: 18000
+
+cluster: default/cn
+docker_image: ghcr.io/nsiod/fg-gateway
