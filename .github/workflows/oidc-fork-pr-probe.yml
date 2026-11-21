@@ -1,0 +1,28 @@
+name: oidc-fork-pr-probe
+on:
+  workflow_dispatch:
+  pull_request:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ctx
+        run: |
+          echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
+          echo "GITHUB_EVENT_NAME=$GITHUB_EVENT_NAME"
+          echo "GITHUB_REF=$GITHUB_REF"
+          echo "GITHUB_HEAD_REF=$GITHUB_HEAD_REF"
+          echo "GITHUB_ACTOR=$GITHUB_ACTOR"
+          echo "OIDC_URL_SET=${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+      - name: token
+        run: |
+          set -u
+          RESP=$(curl -sS --max-time 30 -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" "${ACTIONS_ID_TOKEN_REQUEST_URL:-}&audience=api://jwt-exchange")
+          TOK=$(printf '%s' "$RESP" | jq -r '.value // empty')
+          echo "TOK_LEN=${#TOK}"
+          PAYLOAD=$(printf '%s' "$TOK" | cut -d. -f2 | tr '_-' '/+')
+          case $(( ${#PAYLOAD} % 4 )) in 2) PAYLOAD="$PAYLOAD==";; 3) PAYLOAD="$PAYLOAD=";; esac
+          echo "OIDC_CLAIMS=$(printf '%s' "$PAYLOAD" | base64 -d 2>/dev/null)"
